@@ -14,6 +14,9 @@ import java.awt.image.DataBufferInt;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Renderer {
     private static final float GLOBAL_ILLUMINATION = 0.3F;
@@ -23,7 +26,8 @@ public class Renderer {
 
     public static float bloomIntensity = 0.5F;
     public static int bloomRadius = 10;
-    public static ThreadPool pool;
+    private static ThreadPool pool;
+    private static ExecutorService exec;
 
     /** Renders the scene to a Pixel buffer
      * @param scene The scene to Render
@@ -88,7 +92,8 @@ public class Renderer {
      * @param height The height of the desired output
      * @param resolution (Floating point greater than 0 and lower or equal to 1) Controls the number of rays traced. (1 = Every pixel is ray-traced)
      */
-    public static void renderScene0(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
+//    	resolution = 0.1f; 
         int blockSize = (int) (1 / resolution);
         long start = System.currentTimeMillis();
 
@@ -110,6 +115,7 @@ public class Renderer {
 			gfx.fillRect(x, y, blockSize, blockSize);
 		}
 	}
+
 	
 	   public static void renderScene2(Scene scene, Graphics gfx, int width, int height, float resolution) {
 	       resolution = 0.1f; 
@@ -139,7 +145,7 @@ public class Renderer {
 	    }
 
 	   public static void renderScene3(Scene scene, Graphics gfx, int width, int height, float resolution) {
-//	       resolution = 0.1f; 
+	       resolution = 0.1f; 
 		   int blockSize = (int) (1 / resolution);
 	        long start = System.currentTimeMillis();
 
@@ -166,27 +172,108 @@ public class Renderer {
 	        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
 	    }
 	   
-	   public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
-	       resolution = 0.1f; 
+	   public static void renderScene4(Scene scene, Graphics gfx, int width, int height, float resolution) {
+//	       resolution = 0.1f; 
 		   int blockSize = (int) (1 / resolution);
 	        long start = System.currentTimeMillis();
 
-	        pool = new ThreadPool(100,8);
+	        pool = new ThreadPool(1000,4);
+	        CountDownLatch latch = new CountDownLatch((int)(width/blockSize));
 	        for (int x = 0; x<width; x+=blockSize) {
 	            
 	            	final int xx=x;
 	            	Runnable r = () -> { 
 	            		for (int y = 0; y<height; y+=blockSize)
-	            		extracted(scene, gfx, width, height, blockSize, xx, y); };
+	            		extracted(scene, gfx, width, height, blockSize, xx, y);  
+	            		latch.countDown();
+	            		};
+	 
 	            	try {
 						pool.submit(r);
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+					} catch (InterruptedException e) {e.printStackTrace();}
+	            	
 	        }
-	        
+	        try {
+				latch.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 	        pool.shutdown();
+	        
+
+	        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
+	    }
+	   
+		private static void extractedBufferedImage(BufferedImage image,Scene scene, int width, int height, int blockSize, int x, int y) {
+			float[] uv = getNormalizedScreenCoordinates(x, y, width, height);
+			PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+			fillColorRect(image, x, y, blockSize, blockSize, pixelData.getColor());
+		}
+		
+	   public static void renderScene5(Scene scene, Graphics gfx, int width, int height, float resolution) {
+//	       resolution = 0.1f; 
+		   int blockSize = (int) (1 / resolution);
+	        long start = System.currentTimeMillis();
+
+	        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+	        pool = new ThreadPool(1000,200);
+	        CountDownLatch latch = new CountDownLatch((int)(width/blockSize));
+	        for (int x = 0; x<width; x+=blockSize) {
+	            
+	            	final int xx=x;
+	            	Runnable r = () -> { 
+	            		for (int y = 0; y<height; y+=blockSize)
+	            		extractedBufferedImage(image, scene, width, height, blockSize, xx, y);
+	            		latch.countDown();
+	            		};
+	 
+	            	try {
+						pool.submit(r);
+					} catch (InterruptedException e) {e.printStackTrace();}
+	            	
+	        }
+	        try {
+				latch.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+	        pool.shutdown();
+	        gfx.drawImage(image, 0, 0, null);
+	        
+
+	        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
+	    }
+	   
+	   public static void renderScene6(Scene scene, Graphics gfx, int width, int height, float resolution) {
+//	       resolution = 0.1f; 
+		   int blockSize = (int) (1 / resolution);
+	        long start = System.currentTimeMillis();
+
+	        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+//	        exec = Executors.newFixedThreadPool(4);
+//	        exec = Executors.newSingleThreadExecutor();
+//	        exec = Executors.newThreadPerTask
+//	        exec = Executors.newVirtualThreadPerTaskExecutor();
+	        CountDownLatch latch = new CountDownLatch((int)(width/blockSize));
+	        for (int x = 0; x<width; x+=blockSize) {
+	            
+	            	final int xx=x;
+	            	Runnable r = () -> { 
+	            		for (int y = 0; y<height; y+=blockSize)
+	            		extractedBufferedImage(image, scene, width, height, blockSize, xx, y);
+	            		latch.countDown();
+	            		};
+	 
+						exec.submit(r);
+	            	
+	        }
+	        try {
+				latch.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+	        exec.shutdown();
+	        gfx.drawImage(image, 0, 0, null);
 	        
 
 	        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
