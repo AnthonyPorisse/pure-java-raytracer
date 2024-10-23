@@ -31,7 +31,12 @@ public class ThreadPool {
 	}
 	
 	public void submit(Runnable r) throws InterruptedException{
-		queue.add(r);
+		while(true) {
+			try{ 
+				queue.add(r);
+				break;
+			}catch(IllegalStateException e) {continue;}
+		}
 	}
 	
 	public void shutdown() {
